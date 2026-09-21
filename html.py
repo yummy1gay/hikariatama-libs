@@ -59,6 +59,8 @@ class HTMLToTelegramParser(HTMLParser):
             EntityType = MessageEntityStrike
         elif tag == 'blockquote':
             EntityType = MessageEntityBlockquote
+            if 'expandable' in attrs or 'collapsed' in attrs:
+                args['collapsed'] = True
         elif tag == 'code':
             try:
                 # If we're in the middle of a <pre> tag, this <code> tag is
@@ -165,13 +167,17 @@ class TextDecoration(ABC):
             MessageEntityCode: "code",
             MessageEntityUnderline: "underline",
             MessageEntityStrike: "strikethrough",
-            MessageEntityBlockquote: "blockquote",
         }
         if type(entity) in entity_map:
             if re.match(r"^<emoji document_id=\"?\d+?\"?>[^<]*?<\/emoji>$", text):
                 return text
 
             return cast(str, getattr(self, entity_map[type(entity)])(value=text))
+        if type(entity) == MessageEntityBlockquote:
+            return self.blockquote(
+                value=text,
+                collapsed=bool(getattr(entity, "collapsed", False)),
+            )
         if type(entity) == MessageEntityPre:
             return (
                 self.pre_language(value=text, language=entity.language)
@@ -290,6 +296,10 @@ class TextDecoration(ABC):
         pass
 
     @abstractmethod
+    def blockquote(self, value: str, collapsed: bool = False) -> str:  # pragma: no cover
+        pass
+
+    @abstractmethod
     def custom_emoji(self, value: str, document_id: str) -> str:  # pragma: no cover
         pass
 
@@ -325,7 +335,9 @@ class HtmlDecoration(TextDecoration):
     def quote(self, value: str) -> str:
         return escape(value, quote=False)
 
-    def blockquote(self, value: str) -> str:
+    def blockquote(self, value: str, collapsed: bool = False) -> str:
+        if collapsed:
+            return f"<blockquote expandable>{value}</blockquote>"
         return f"<blockquote>{value}</blockquote>"
 
     def custom_emoji(self, value: str, document_id: str) -> str:
